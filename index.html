@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班級座位表與管理系統</title>
+    <style>
+        /* Global Apple-esque CSS */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        #app {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 1rem;
+            gap: 1.5rem;
+        }
+        @media (min-width: 1024px) {
+            #app { flex-direction: row; }
+            #student-management { width: 300px; flex-shrink: 0; }
+            #main-display { flex-grow: 1; }
+        }
+
+        /* --- 側邊欄樣式 --- */
+        #student-management {
+            background-color: #ffffff; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); display: flex; flex-direction: column; border: 1px solid #e0e0e0;
+        }
+        #student-management h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: #333333; }
+        .form-group { margin-bottom: 1rem; }
+        .form-label { display: block; font-size: 0.875rem; font-weight: 500; color: #444444; margin-bottom: 0.25rem; }
+        .form-input { width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #cccccc; border-radius: 6px; font-size: 0.875rem; box-shadow: none; transition: border-color 0.15s, box-shadow 0.15s; }
+        .form-input:focus { border-color: #007aff; outline: none; box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2); }
+        
+        .app-button { padding: 0.6rem 1rem; border-radius: 6px; color: white; font-size: 0.875rem; font-weight: 600; text-align: center; transition: background-color 0.15s, opacity 0.15s; cursor: pointer; border: none; box-shadow: none; flex: 1; }
+        .bg-primary { background-color: #007aff; } .bg-primary:hover { background-color: #0066cc; }
+        .bg-danger { background-color: #ff3b30; } .bg-danger:hover { background-color: #cc2d25; }
+        .bg-success { background-color: #34c759; } .bg-success:hover { background-color: #2b9d47; }
+        .bg-neutral { background-color: #8e8e93; } .bg-neutral:hover { background-color: #7a7a7e; }
+
+        /* --- 未排位學生 --- */
+        #unassigned-students-title { font-size: 1.125rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; border-top: 1px solid #eeeeee; padding-top: 0.75rem; color: #333333; }
+        #unassigned-students { 
+            height: 40rem; 
+            background-color: #f7f7f7; 
+            display: grid; 
+            grid-template-columns: 1fr 1fr 1fr; /* 三欄 */
+            gap: 0.5rem; 
+            padding: 0.5rem; 
+            border-radius: 8px; 
+            max-height: 85vh; 
+            overflow-y: auto; 
+            border: 1px solid #e0e0e0;
+        }
+        .student-item {
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            cursor: grab;
+            transition: all 0.15s;
+            font-size: 0.875rem;
+            border: 1px solid transparent;
+            text-align: center;
+            font-weight: 500;
+        }
+        .student-item.male { background-color: #e0f2ff; border-color: #b3d9ff; color: #004d99; }
+        .student-item.female { background-color: #ffe0f5; border-color: #ffc2e0; color: #cc0088; }
+        .student-item:hover { box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15); }
+        /* 拖曳時，隱藏原始元素但保持空間 */
+        .student-item[data-dragging="true"] { visibility: hidden; } 
+
+        /* --- 主要顯示區樣式 --- */
+        #main-display { background-color: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); border: 1px solid #e0e0e0; }
+        #display-title { font-size: 1.8rem; font-weight: 700; text-align: center; margin-bottom: 1rem; color: #333333; }
+        .main-content { display: grid; grid-template-columns: 1fr 300px; gap: 1rem; width: 100%; }
+        
+        #seating-and-cadre-area { display: flex; flex-direction: column; align-items: center; width: 100%; }
+        #teacher-info { width: 100%; text-align: center; margin-bottom: 1rem; }
+        #teacher-info span { font-size: 1.125rem; font-weight: 600; color: #333333; }
+        
+        #flip-container { width: 100%; display: flex; flex-direction: column; align-items: center; transition: flex-direction 0.3s ease; }
+        .flex-col-reverse { flex-direction: column-reverse; }
+
+        .podium-area { width: 100%; margin-top: 1.5rem; margin-bottom: 1.5rem; border-color: #333333; text-align: center; transition: all 0.3s; }
+        
+        /* --- 幹部名單 --- */
+        #cadre-map-container { margin-bottom: 1.5rem; padding: 0.5rem; border-radius: 8px; background-color: #f7f7f7; border: 1px solid #e0e0e0; }
+        #cadre-map-container h3 { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; color: #444444; text-align: center; }
+        .cadre-cell {
+            min-width: 4.5rem;
+            min-height: 4rem;
+            height: 4rem;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.25rem;
+            font-size: 0.7rem;
+            border: 1px solid #cccccc;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.1s;
+            pointer-events: auto;
+            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+            background-color: #ffffff;
+        }
+        .cadre-cell.occupied { border-color: #00a87f; border-style: solid; }
+        .cadre-cell.male { background-color: #e0f2ff; }
+        .cadre-cell.female { background-color: #ffe0f5; }
+        .cadre-cell.empty { border-style: dashed; background-color: #f7f7f7; }
+
+        /* --- 座位表 --- */
+        #seating-chart-container { width: 100%; }
+        #seating-chart { display: grid; gap: 0.5rem; padding: 0.5rem; }
+        .seat-cell {
+            width: 100%;
+            height: 7rem; /* 提高兩倍 */
+            border-radius: 8px;
+            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-weight: 600;
+            border-width: 1px;
+            transition: all 0.15s;
+            position: relative;
+            pointer-events: auto;
+            line-height: 1.1; /* 縮小行高 */
+            padding-top: 5px;
+            padding-bottom: 5px;
+            border-style: solid;
+            font-size: 0.8rem;
+        }
+        .seat-cell.occupied { border-color: #00a87f; cursor: move; }
+        .seat-cell.empty { border-style: dashed; background-color: #f7f7f7; cursor: pointer; }
+        .seat-cell.excluded { background-color: #e8e8e8; border-color: #b0b0b0; color: #999999; cursor: not-allowed; }
+        .seat-cell.male { background-color: #e0f2ff; }
+        .seat-cell.female { background-color: #ffe0f5; }
+
+        /* --- 功課表 --- */
+        .timetable-area { display: flex; flex-direction: column; gap: 1rem; min-width: 250px; flex-shrink: 0; padding: 0; }
+        .timetable-container { padding: 0.8rem; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); }
+        .timetable-grid { display: grid; gap: 1px; }
+        .timetable-day { padding: 0.3rem; text-align: center; font-size: 0.75rem; font-weight: 600; color: #444444; border-bottom: 1px solid #d1d5db; }
+        .timetable-cell { 
+            padding: 0.25rem; 
+            height: 3.5rem; 
+            border: 1px solid #e0e0e0; 
+            border-radius: 4px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center; 
+            font-size: 0.75rem; 
+            cursor: pointer; 
+            font-weight: 500; 
+            transition: background-color 0.1s;
+        }
+        .timetable-cell[contenteditable="false"] { background-color: #f0f0f0; font-weight: 600; color: #444444; }
+
+        /* --- 垃圾桶區域 --- */
+        .trash-can-container {
+            border: 2px dashed #ff3b30;
+            background-color: #fff0f0;
+            padding: 1rem;
+            text-align: center;
+            border-radius: 8px;
+            margin-top: 1rem;
+            transition: all 0.2s;
+        }
+        .trash-can-over {
+            background-color: #ffcccc !important;
+            border-color: #cc0000 !important;
+            box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
+        }
+
+        /* --- 列印樣式 --- */
+        @media print {
+            .no-print { display: none !important; }
+            .main-content { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; grid-template-columns: 1fr 250px; }
+            .seat-cell, .cadre-cell { -webkit-print-color-adjust: exact; color-adjust: exact; font-size: 10px !important; line-height: 1.2; height: 3.5rem !important; }
+            .timetable-cell { font-size: 10px !important; height: 3.5rem !important; display: flex; align-items: center; justify-content: center; }
+            .timetable-day { font-size: 12px !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        
+        <div id="student-management" class="no-print">
+            <h2 style="color: #007aff;">學生名單管理</h2>
+
+            <!-- 標題設定 -->
+            <div class="form-group">
+                <label for="chart-title" class="form-label">座位表標題</label>
+                <input type="text" id="chart-title" value="座位表" oninput="updateDisplayTitle()" class="form-input">
+            </div>
+            <!-- 班導師設定 -->
+            <div class="form-group">
+                <label for="teacher-name" class="form-label">班導師姓名</label>
+                <input type="text" id="teacher-name" value="王老師" oninput="renderPodiumArea()" class="form-input">
+            </div>
+
+            <!-- 座位排數設定 -->
+            <div class="form-group">
+                <label class="form-label">座位排數 (行x列)</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="number" id="input-rows" value="6" min="1" class="form-input" onchange="updateSeatingDimensions()" onblur="updateSeatingDimensions()" style="text-align: center; width: 50%;">
+                    <span style="padding: 0.6rem 0; color: #6b7280; font-weight: 500;">X</span>
+                    <input type="number" id="input-cols" value="6" min="1" class="form-input" onchange="updateSeatingDimensions()" onblur="updateSeatingDimensions()" style="text-align: center; width: 50%;">
+                </div>
+            </div>
+
+            <!-- 名單輸入 -->
+            <div class="form-group">
+                <label for="student-list-input" class="form-label">
+                    輸入學生名單 
+                    <span style="font-size: 0.75rem; color: #6b7280; display: block;">例: 1王啓安,M2林承萱,M15王婕晏,F</span>
+                </label>
+                <textarea id="student-list-input" rows="5" class="form-input" style="font-size: 0.75rem;"></textarea>
+                <button onclick="loadStudentList()" class="app-button bg-primary" style="margin-top: 0.5rem; width: 100%;">載入名單</button>
+            </div>
+
+            <!-- 操作按鈕群 -->
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                <button onclick="clearAllAssignments()" class="app-button bg-danger">清除排位</button>
+                <button onclick="randomlyAssignSeats()" class="app-button bg-success">亂數排座位</button>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                <button onclick="toggleView()" id="view-toggle-btn" class="app-button bg-primary">切換視角 (學生)</button>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                <button onclick="clearTimetable(1)" class="app-button bg-neutral">清除課表 1</button>
+                <button onclick="clearTimetable(2)" class="app-button bg-neutral">清除課表 2</button>
+            </div>
+
+            <!-- 未排位學生清單 -->
+            <h3 id="unassigned-students-title">未排位學生</h3>
+            <div id="unassigned-students" 
+                style="height: 40rem; background-color: #f7f7f7; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; padding: 0.5rem; border-radius: 8px; max-height: 85vh; overflow-y: auto; border: 1px solid #e0e0e0;"
+            >
+                <!-- 學生名單將由 JS 渲染到此處 -->
+            </div>
+            
+            <!-- 垃圾桶區域 -->
+            <div 
+                id="trash-can"
+                class="trash-can-container"
+            >
+                <svg viewBox="0 0 24 24" style="width: 24px; height: 24px; fill: #ff3b30; display: inline-block; vertical-align: middle; margin-right: 0.5rem;">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12 1.41 1.41L13.41 14l2.12 2.12-1.41 1.41L12 15.41l-2.12 2.12-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4h-3.5z"/>
+                </svg>
+                <span style="color: #ff3b30; font-weight: 600;">拖曳至此清除排位</span>
+            </div>
+        </div>
+
+        <!-- 右側：座位表主顯示區 -->
+        <div id="main-display" style="flex-grow: 1;">
+            <h1 id="display-title" style="font-size: 1.8rem; font-weight: 700; text-align: center; margin-bottom: 1rem; color: #333333;">座位表</h1>
+
+            <div class="main-content">
+                <!-- 左側：座位表與幹部區域 -->
+                <div id="seating-and-cadre-area">
+                    
+                    <!-- 班導師文字固定在上方 -->
+                    <div id="teacher-info" style="width: 100%; text-align: center; margin-bottom: 1rem;">
+                        <span>班導師: 王老師</span>
+                    </div>
+
+                    <!-- 核心翻轉容器 (Podium, Cadre, Seating) -->
+                    <div id="flip-container" style="width: 100%; display: flex; flex-direction: column; align-items: center; transition: flex-direction 0.3s ease;">
+                    
+                        <!-- 講台/黑板圖案 - 學生視角 -->
+                        <div id="podium-top" class="podium-area" style="border-bottom: 4px solid #333333; padding-bottom: 0.5rem;">
+                            <!-- SVG will be rendered here -->
+                        </div>
+
+                        <!-- 幹部名單區域 -->
+                        <div id="cadre-map-container" style="margin-bottom: 1.5rem; padding: 0.5rem; border-radius: 8px; background-color: #f7f7f7; border: 1px solid #e0e0e0;">
+                            <h3 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; color: #444444; text-align: center;">幹部名單</h3>
+                            <div id="cadre-map" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; padding: 0.5rem;">
+                                <!-- Cadre cells will be rendered here -->
+                            </div>
+                        </div>
+
+                        <!-- 座位表區域 -->
+                        <div id="seating-chart-container" style="width: 100%;">
+                            <div id="seating-chart" style="display: grid; gap: 0.5rem; padding: 0.5rem;">
+                                <!-- Seat cells will be rendered here -->
+                            </div>
+                        </div>
+
+                        <!-- 講台/黑板圖案 - 老師視角 -->
+                        <div id="podium-bottom" class="podium-area" style="border-top: 4px solid #333333; padding-top: 0.5rem; display: none;">
+                            <!-- SVG will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右側：功課表區域 (包含兩個課表) -->
+                <div id="timetable-area" class="timetable-area">
+                    
+                    <!-- 課表 1 -->
+                    <div id="timetable-container-1" class="timetable-container">
+                        <input type="text" id="timetable-title-1" value="課表" oninput="saveTimetableTitle(1)" class="form-input" style="width: 100%; font-size: 1.125rem; font-weight: 600; text-align: center; margin-bottom: 0.8rem; padding: 0.25rem; border-bottom: 1px solid #e0e0e0; outline: none; color: #333333; border: none; border-radius: 0;">
+                        <div id="timetable-grid-1" class="timetable-grid">
+                            <!-- Timetable cells will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- 課表 2 -->
+                    <div id="timetable-container-2" class="timetable-container">
+                        <input type="text" id="timetable-title-2" value="課表" oninput="saveTimetableTitle(2)" class="form-input" style="width: 100%; font-size: 1.125rem; font-weight: 600; text-align: center; margin-bottom: 0.8rem; padding: 0.25rem; border-bottom: 1px solid #e0e0e0; outline: none; color: #333333; border: none; border-radius: 0;">
+                        <div id="timetable-grid-2" class="timetable-grid">
+                            <!-- Timetable cells will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 核心資料結構 ---
+        let students = []; // {id, num, name, gender}
+        let ROWS = 6; // 預設行數
+        let COLS = 6; // 預設列數
+        let seatingMap = Array(ROWS * COLS).fill(null); // 座位表資料 (存學生 ID)
+        let cadreMap = Array(13).fill(null); // 13 cadre positions. Stores student ID or null.
+        let excludedSeats = new Set(); // Stores index (0-35) of excluded seats.
+        let viewMode = 'student'; // 'student' or 'teacher'
+
+        const CADRE_NAMES = ["班長", "副班長", "學藝", "衛生1", "衛生2", "風紀", "事務", "合作", "康樂", "圖書", "資訊", "心輔", "手機"];
+        const DEFAULT_STUDENT_LIST_TEXT = `1王啓安,M2林承萱,M3林冠宇,M4林祈碩,M5張家源,M6張堃閔,M7陳祉佑,M8潘紹宸,M9蔡汯佑,M10蔡治睿,M11蔡景翔,M12鄭俊詳,M13薛宇恩,M14蘇立威,M15王婕晏,F16王翎溱,F17朱紫均,F18呂穎茜,F19杜如茵,F20周盈淇,F21林靚文,F22紀爵甄,F23張庭瑜,F24莊芷稜,F25許佑翎,F26許家瑄,F27陳葦珊,F28黃郁涵,F29楊婉君,F31蔡念潔,F32蔡涵茹,F33鄭圓熹,F34賴姿晴,F30葉家妤,F`;
+
+        // 功課表資料 (8節課 x 5天), 預設清空
+        let timetableData1 = Array(8).fill(0).map(() => Array(5).fill(''));
+        let timetableData2 = Array(8).fill(0).map(() => Array(5).fill(''));
+        let timetableColorMap1 = {};
+        let timetableColorMap2 = {};
+        
+        let draggedStudentId = null;
+        let originalAssignmentType = null; // 'seat', 'cadre', or 'unassigned'
+        let originalAssignmentIndex = null; // seatIndex or cadreIndex
+
+        // --- 初始化 ---
+
+        window.onload = function () {
+            // 確保所有外部資源（如字體）載入完成後才執行
+            document.getElementById('student-list-input').value = DEFAULT_STUDENT_LIST_TEXT;
+            
+            updateSeatingDimensions(6, 6); // 預設 6x6
+            loadStudentList(); // 載入名單
+            renderTimetable(timetableData1, timetableColorMap1, 1);
+            renderTimetable(timetableData2, timetableColorMap2, 2);
+
+            // 設置拖曳事件監聽器
+            setupDragAndDropListeners();
+        };
+
+        // --- 輔助函數 ---
+
+        /** 取得漢字筆畫數 (簡化版，僅用於排序) */
+        function getStrokeCount(char) {
+            // 簡化筆畫數計算，確保排序邏輯
+            if (char) return char.charCodeAt(0) % 100; 
+            return 0;
+        }
+
+        /** 學生名單排序：按號碼，無號碼按姓氏筆畫 */
+        function sortStudents(studentArray) {
+            return [...studentArray].sort((a, b) => {
+                if (a.num !== null && b.num !== null) return a.num - b.num;
+                if (a.num !== null) return -1;
+                if (b.num !== null) return 1;
+
+                const nameA = a.name || '';
+                const nameB = b.name || '';
+                const strokeA = nameA.length > 0 ? getStrokeCount(nameA[0]) : 0;
+                const strokeB = nameB.length > 0 ? getStrokeCount(nameB[0]) : 0;
+
+                if (strokeA !== strokeB) return strokeA - strokeB;
+                return nameA.localeCompare(nameB, 'zh-TW');
+            });
+        }
+        
+        /** 產生柔和的隨機背景色 */
+        function getRandomPastelColor() {
+            const h = Math.floor(Math.random() * 360);
+            const s = Math.floor(Math.random() * 20) + 50;
+            const l = Math.floor(Math.random() * 20) + 80;
+            return `hsl(${h}, ${s}%, ${l}%)`;
+        }
+        
+        /** 功課表顏色管理 */
+        function getSubjectColor(subjectName, colorMap) {
+            const trimmedName = subjectName.trim();
+            if (!trimmedName) return '';
+            if (!colorMap[trimmedName]) {
+                colorMap[trimmedName] = getRandomPastelColor();
+            }
+            return colorMap[trimmedName];
+        }
+
+        // --- 資料操作與渲染 ---
+
+        /** 複雜名單解析函數 */
+        function parseStudentList(text) {
+            const list = [];
+            if (!text) return list;
+            const regex = /(\d*)([\u4e00-\u9fa5]+)\s*,\s*([MFmf])(?=\d*[\u4e00-\u9fa5]+\s*,\s*[MFmf]|$)/g;
+            let match;
+            let currentId = 1;
+            while ((match = regex.exec(text)) !== null) {
+                const num = match[1] ? parseInt(match[1], 10) : null;
+                const name = match[2].trim();
+                const gender = match[3].toUpperCase();
+                list.push({ id: currentId++, num: num, name: name, gender: gender });
+            }
+            return list;
+        }
+
+        /** 根據 ID 查找學生 */
+        function getStudentById(id) {
+            return students.find(s => s.id === id);
+        }
+        
+        /** 更新顯示標題 */
+        function updateDisplayTitle() {
+            document.getElementById('display-title').textContent = document.getElementById('chart-title').value || '座位表';
+        }
+
+        /** 更新座位表行與列數 */
+        function updateSeatingDimensions(newR, newC) {
+            const newRows = Math.max(1, parseInt(document.getElementById('input-rows').value) || newR || ROWS);
+            const newCols = Math.max(1, parseInt(document.getElementById('input-cols').value) || newC || COLS);
+            
+            if (newRows !== ROWS || newCols !== COLS) {
+                ROWS = newRows;
+                COLS = newCols;
+                
+                const newTotalSeats = ROWS * COLS;
+                seatingMap = Array(newTotalSeats).fill(null);
+                excludedSeats.clear();
+                cadreMap.fill(null);
+                
+                // 重新渲染所有內容
+                renderAll();
+            }
+        }
+
+        /** 載入學生名單 */
+        function loadStudentList() {
+            const text = document.getElementById('student-list-input').value;
+            students = parseStudentList(text);
+            
+            // 清空排位
+            seatingMap = Array(ROWS * COLS).fill(null);
+            cadreMap.fill(null);
+            excludedSeats.clear();
+
+            renderAll();
+        }
+
+        /** 清除所有排位 */
+        function clearAllAssignments() {
+            seatingMap = Array(ROWS * COLS).fill(null);
+            cadreMap.fill(null);
+            excludedSeats.clear();
+            renderAll();
+        }
+
+        /** 亂數排座位 */
+        function randomlyAssignSeats() {
+            const assignedStudentIds = new Set([...seatingMap.filter(id => id !== null), ...cadreMap.filter(id => id !== null)]);
+            const unassignedStudents = students.filter(s => !assignedStudentIds.has(s.id));
+            
+            const availableSeatsIndices = seatingMap
+                .map((id, index) => ({ id, index }))
+                .filter(seat => seat.id === null && !excludedSeats.has(seat.index))
+                .map(seat => seat.index);
+
+            // Fisher-Yates shuffle
+            for (let i = unassignedStudents.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [unassignedStudents[i], unassignedStudents[j]] = [unassignedStudents[j], unassignedStudents[i]];
+            }
+
+            const newSeatingMap = [...seatingMap];
+            let studentIndex = 0;
+            for (const seatIndex of availableSeatsIndices) {
+                if (studentIndex < unassignedStudents.length) {
+                    newSeatingMap[seatIndex] = unassignedStudents[studentIndex].id;
+                    studentIndex++;
+                } else {
+                    break;
+                }
+            }
+            seatingMap = newSeatingMap;
+            renderAll();
+        }
+
+        /** 切換視角 */
+        function toggleView() {
+            viewMode = viewMode === 'student' ? 'teacher' : 'student';
+            const btn = document.getElementById('view-toggle-btn');
+            btn.textContent = `切換視角 (${viewMode === 'student' ? '學生' : '老師'})`;
+            renderAll();
+        }
+
+        /** 渲染未排位學生清單 */
+        function renderUnassignedList() {
+            const container = document.getElementById('unassigned-students');
+            container.innerHTML = '';
+            
+            const allStudents = sortStudents(students); 
+
+            allStudents.forEach(student => {
+                const isMale = student.gender === 'M';
+                const el = document.createElement('div');
+                el.className = `student-item ${isMale ? 'male' : 'female'}`;
+                el.textContent = `${student.num ? student.num : ''}${student.name}`;
+                el.setAttribute('draggable', true);
+                el.dataset.studentId = student.id;
+                el.dataset.assignedType = 'unassigned';
+
+                el.addEventListener('dragstart', handleDragStart);
+                el.addEventListener('dragend', handleDragEnd);
+
+                container.appendChild(el);
+            });
+
+            // 設置拖曳回名單的 Drop 區
+            container.addEventListener('dragover', handleDropZoneDragOver);
+            container.addEventListener('drop', (e) => handleDrop(e, 'unassigned'));
+        }
+
+        /** 渲染座位表 */
+        function renderSeatingChart() {
+            const chart = document.getElementById('seating-chart');
+            chart.innerHTML = '';
+            chart.style.gridTemplateColumns = `repeat(${COLS}, minmax(0, 1fr))`;
+
+            const rowOrder = viewMode === 'student' ? [...Array(ROWS).keys()] : [...Array(ROWS).keys()].reverse();
+
+            rowOrder.forEach(r => {
+                const colOrder = viewMode === 'student' ? [...Array(COLS).keys()] : [...Array(COLS).keys()].reverse();
+                
+                colOrder.forEach(c => {
+                    const originalIndex = r * COLS + c; 
+                    const seatId = seatingMap[originalIndex];
+                    const student = getStudentById(seatId);
+                    
+                    const el = document.createElement('div');
+                    el.className = 'seat-cell';
+                    el.dataset.seatIndex = originalIndex;
+                    el.dataset.isSeat = 'true';
+
+                    el.addEventListener('dragover', handleDropZoneDragOver);
+                    el.addEventListener('drop', (e) => handleDrop(e, 'seat', originalIndex));
+                    el.addEventListener('click', () => toggleSeatExclusion(originalIndex));
+
+                    const seatNumber = originalIndex + 1; // 顯示的座位號碼 (1, 2, 3...)
+
+                    if (excludedSeats.has(originalIndex)) {
+                        el.classList.add('excluded');
+                        el.innerHTML = `<span style="font-size: 2.25rem; font-weight: bold;">X</span>`;
+                    } else if (student) {
+                        const isMale = student.gender === 'M';
+                        const name = student.name || '';
+                        const familyName = name.length > 1 ? name.substring(0, 1) : name;
+                        const givenName = name.length > 1 ? name.substring(1) : '';
+
+                        el.classList.add('occupied', isMale ? 'male' : 'female');
+                        el.setAttribute('draggable', true);
+                        el.dataset.studentId = student.id;
+                        el.dataset.assignedType = 'seat';
+
+                        // **修正: 移除名字之間的斷行**
+                        const numberDisplay = `<span style="font-size: 1rem; color: #666666; font-weight: 600; display: block;">${student.num || ''}</span>`;
+                        const nameCombinedDisplay = `<span style="font-size: 1.15rem; font-weight: 600; color: #333333; display: block; line-height: 1.15;">${familyName}${givenName}</span>`;
+
+                        const content = viewMode === 'student'
+                            ? `${numberDisplay}${nameCombinedDisplay}`
+                            : `${nameCombinedDisplay}${numberDisplay}`;
+
+                        el.innerHTML = content;
+
+                        el.addEventListener('dragstart', handleDragStart);
+                        el.addEventListener('dragend', handleDragEnd);
+                    } else {
+                        el.classList.add('empty');
+                        el.innerHTML = `<span style="font-size: 1rem; color: #999999;">${seatNumber}</span>`;
+                    }
+                    chart.appendChild(el);
+                });
+            });
+        }
+
+        /** 切換座位排除狀態 */
+        function toggleSeatExclusion(index) {
+            if (seatingMap[index] === null) {
+                if (excludedSeats.has(index)) {
+                    excludedSeats.delete(index);
+                } else {
+                    excludedSeats.add(index);
+                }
+                renderSeatingChart();
+            }
+        }
+
+        /** 渲染幹部名單 */
+        function renderCadreList() {
+            const container = document.getElementById('cadre-map');
+            container.innerHTML = '';
+
+            CADRE_NAMES.forEach((cadreName, index) => {
+                const studentId = cadreMap[index];
+                const student = getStudentById(studentId);
+
+                const el = document.createElement('div');
+                el.className = 'cadre-cell';
+                el.dataset.cadreIndex = index;
+
+                el.addEventListener('dragover', handleDropZoneDragOver);
+                el.addEventListener('drop', (e) => handleDrop(e, 'cadre', index));
+                
+                if (student) {
+                    const isMale = student.gender === 'M';
+                    const studentNumber = student.num !== null ? student.num : '';
+                    
+                    el.classList.add('occupied', isMale ? 'male' : 'female');
+                    el.setAttribute('draggable', true);
+                    el.dataset.studentId = student.id;
+                    el.dataset.assignedType = 'cadre';
+
+                    el.innerHTML = `
+                        <span style="font-size: 0.7rem; font-weight: 500; color: #444444;">${cadreName}</span>
+                        <span style="font-size: 0.875rem; font-weight: 600; color: #333333;">${studentNumber}${student.name}</span>
+                    `;
+                    el.addEventListener('dragstart', handleDragStart);
+                    el.addEventListener('dragend', handleDragEnd);
+                } else {
+                    el.classList.add('empty');
+                    el.innerHTML = `
+                        <span style="font-size: 0.7rem; font-weight: 500; color: #999999;">${cadreName}</span>
+                        <span style="font-size: 0.75rem; color: #b0b0b0;">拖曳放置</span>
+                    `;
+                }
+
+                container.appendChild(el);
+            });
+        }
+
+        /** 渲染講台/班導師區域 */
+        function renderPodiumArea() {
+            const podiumTopDiv = document.getElementById('podium-top');
+            const podiumBottomDiv = document.getElementById('podium-bottom');
+            const flipContainer = document.getElementById('flip-container'); 
+            const teacherName = document.getElementById('teacher-name').value || '導師';
+
+            // 班導師文字固定在上方
+            document.getElementById('teacher-info').innerHTML = `<span>班導師: ${teacherName}</span>`;
+
+            // 講台/黑板 SVG 圖案
+            const podiumSVG = `
+                <div style="margin-top: 0.5rem;">
+                    <svg style="width: 100%; height: 3rem; max-width: 32rem; margin-left: auto; margin-right: auto;" viewBox="0 0 100 12" preserveAspectRatio="none">
+                        <rect x="0" y="0" width="100" height="10" rx="1" fill="#333333"></rect>
+                        <path d="M 35 10 L 35 12 M 65 10 L 65 12" stroke="#333333" stroke-width="0.5"></path>
+                        <text x="50" y="6" font-size="4" fill="#ffffff" text-anchor="middle" style="font-family: 'Noto Sans TC', sans-serif;">講台 / 黑板</text>
+                    </svg>
+                </div>
+            `;
+
+            podiumTopDiv.innerHTML = podiumSVG;
+            podiumBottomDiv.innerHTML = podiumSVG;
+
+            // 根據視角切換翻轉核心區域 (講台、幹部、座位表)
+            if (viewMode === 'student') {
+                flipContainer.classList.remove('flex-col-reverse'); 
+                podiumTopDiv.style.display = 'block';
+                podiumBottomDiv.style.display = 'none';
+            } else {
+                flipContainer.classList.add('flex-col-reverse'); 
+                // 修正：老師視角時，講台隱藏
+                podiumTopDiv.style.display = 'none';
+                podiumBottomDiv.style.display = 'none'; 
+            }
+        }
+        
+        /** 儲存課表標題 */
+        function saveTimetableTitle(index) {
+            // No action needed other than the input's own value change
+        }
+        
+        /** 渲染功課表 */
+        function renderTimetable(data, colorMap, id) {
+            const container = document.getElementById(`timetable-grid-${id}`);
+            container.innerHTML = '';
+            
+            const days = ['一', '二', '三', '四', '五'];
+            const periods = 8;
+            
+            container.style.gridTemplateColumns = `repeat(${days.length + 1}, minmax(0, 1fr))`;
+
+            // 設置標題 (空白) 和星期幾
+            container.innerHTML += `<div class="timetable-day" style="border-bottom: 1px solid #d1d5db; color: #333333;">節次</div>`;
+            days.forEach(day => {
+                container.innerHTML += `<div class="timetable-day" style="border-bottom: 1px solid #d1d5db; color: #333333;">週${day}</div>`;
+            });
+
+            // 渲染科目
+            for (let r = 0; r < periods; r++) { 
+                const period = r + 1;
+                // 節次欄
+                container.innerHTML += `<div class="timetable-cell" contenteditable="false" style="background-color: #f0f0f0; font-weight: 600; color: #444444;">${period}</div>`;
+                
+                for (let c = 0; c < 5; c++) { 
+                    const subject = data[r][c] || '';
+                    const color = getSubjectColor(subject, colorMap);
+
+                    const el = document.createElement('div');
+                    el.className = 'timetable-cell';
+                    el.dataset.row = r;
+                    el.dataset.col = c;
+                    el.contentEditable = true; 
+                    el.style.backgroundColor = subject ? color : '#f7f7f7';
+                    el.style.color = '#333333';
+                    
+                    el.textContent = subject;
+                    
+                    el.addEventListener('input', (e) => {
+                        const newSubject = e.target.textContent;
+                        data[r][c] = newSubject;
+                        e.target.style.backgroundColor = getSubjectColor(newSubject, colorMap);
+                    });
+                    el.addEventListener('paste', (e) => handleTimetablePaste(e, data, colorMap, id));
+
+                    container.appendChild(el);
+                }
+            }
+        }
+        
+        /** 處理功課表複製貼上 */
+        function handleTimetablePaste(e, data, colorMap, id) {
+            e.preventDefault();
+            const pastedText = e.clipboardData.getData('text/plain');
+            if (!pastedText) return;
+
+            const rowsData = pastedText.trim().split('\n');
+            
+            // Find the focused cell to determine start position
+            const target = e.target;
+            let startRow = parseInt(target.dataset.row, 10);
+            let startCol = parseInt(target.dataset.col, 10);
+            
+            rowsData.forEach((row, rOffset) => {
+                const cells = row.split('\t');
+                cells.forEach((content, cOffset) => {
+                    const currentRow = startRow + rOffset;
+                    const currentCol = startCol + cOffset;
+                    const trimmedContent = content.trim();
+                    
+                    if (currentRow >= 0 && currentRow < 8 && currentCol >= 0 && currentCol < 5) {
+                        data[currentRow][currentCol] = trimmedContent;
+                    }
+                });
+            });
+            // Re-render the specific timetable grid
+            renderTimetable(data, colorMap, id);
+        }
+
+
+        /** 清除單一課表內容 */
+        function clearTimetable(index) {
+            const emptyData = Array(8).fill(0).map(() => Array(5).fill(''));
+            if (index === 1) {
+                timetableData1 = emptyData;
+                timetableColorMap1 = {};
+                renderTimetable(timetableData1, timetableColorMap1, 1);
+            } else if (index === 2) {
+                timetableData2 = emptyData;
+                timetableColorMap2 = {};
+                renderTimetable(timetableData2, timetableColorMap2, 2);
+            }
+        }
+
+        /** 總渲染 */
+        function renderAll() {
+            updateDisplayTitle();
+            renderUnassignedList();
+            renderSeatingChart();
+            renderCadreList();
+            renderPodiumArea();
+        }
+
+        // --- 拖曳事件處理 (原生 HTML D&D, 兼容性較高) ---
+
+        function setupDragAndDropListeners() {
+            const unassignedList = document.getElementById('unassigned-students');
+            const trashCan = document.getElementById('trash-can');
+            
+            // 設置垃圾桶的 dragover/dragleave 視覺回饋
+            trashCan.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                this.classList.add('trash-can-over');
+            });
+            trashCan.addEventListener('dragleave', function(e) {
+                this.classList.remove('trash-can-over');
+            });
+            trashCan.addEventListener('drop', (e) => handleDrop(e, 'trash'));
+        }
+        
+        // 額外新增：為拖曳的元素添加類別，用於視覺反饋
+        let draggedElement = null;
+
+        function handleDragStart(e) {
+            draggedStudentId = parseInt(e.target.dataset.studentId, 10);
+            originalAssignmentType = e.target.dataset.assignedType || 'unassigned';
+            draggedElement = e.target; // 儲存拖曳元素的 DOM 引用
+            
+            // 確保 Chrome/iframe 環境能夠正確啟動拖曳
+            e.dataTransfer.setData('text/plain', draggedStudentId);
+            e.dataTransfer.effectAllowed = 'move';
+            
+            // 由於 Chrome 問題，添加一個不可見的拖曳圖片來確保拖曳成功啟動
+            e.dataTransfer.setDragImage(new Image(), 0, 0); 
+            
+            // 修正: 拖曳開始時設置 data-dragging="true" 來隱藏原始元素
+            draggedElement.dataset.dragging = 'true';
+
+            if (originalAssignmentType !== 'unassigned') {
+                originalAssignmentIndex = parseInt(e.target.dataset.seatIndex || e.target.dataset.cadreIndex, 10);
+            } else {
+                originalAssignmentIndex = null;
+            }
+        }
+
+        function handleDragEnd(e) {
+            // 修正: 拖曳結束時清除 data-dragging="true"
+            if (draggedElement) {
+                draggedElement.dataset.dragging = '';
+            }
+            draggedElement = null;
+            draggedStudentId = null;
+            originalAssignmentType = null;
+            originalAssignmentIndex = null;
+            document.getElementById('trash-can').classList.remove('trash-can-over');
+        }
+
+        function handleDropZoneDragOver(e) {
+            e.preventDefault(); 
+            // 關鍵修正：強制設定 dropEffect，確保在 iframe 中可放下
+            e.dataTransfer.dropEffect = 'move'; 
+        }
+
+        /**
+         * 處理放下事件
+         */
+        function handleDrop(e, targetType, targetIndex = null) {
+            e.preventDefault();
+            const studentId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+            
+            if (!studentId) return;
+
+            // 1. 清除原位置
+            if (originalAssignmentType === 'seat' && originalAssignmentIndex !== null) {
+                seatingMap[originalAssignmentIndex] = null;
+            } else if (originalAssignmentType === 'cadre' && originalAssignmentIndex !== null) {
+                cadreMap[originalAssignmentIndex] = null;
+            }
+            
+            // 2. 設定新位置
+            if (targetType === 'trash') {
+                // 已在步驟 1 清除
+            } else if (targetType === 'seat' && targetIndex !== null) {
+                if (excludedSeats.has(targetIndex)) {
+                    // 如果拖到排除位，清空原位置後不設置新位置
+                    return renderAll(); 
+                }
+                // 如果目標位置已經有人，被覆蓋的學生會自動回到未排位名單
+                seatingMap[targetIndex] = studentId;
+            } else if (targetType === 'cadre' && targetIndex !== null) {
+                // 如果目標位置已經有人，被覆蓋的學生會自動回到未排位名單
+                cadreMap[targetIndex] = studentId;
+            } else if (targetType === 'unassigned') {
+                // 拖曳回未排位名單區，已在步驟 1 清除
+            }
+            
+            // 3. 重新渲染
+            renderAll();
+        }
+
+    </script>
+</body>
+</html>
